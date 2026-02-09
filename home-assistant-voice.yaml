@@ -1705,8 +1705,6 @@ select:
     internal: true
     options:
       - Not applicable
-    on_value:
-      # Wyoming wake word sensitivity is configured in Home Assistant, not here
 
 # MODIFIED VOICE ASSISTANT - Wyoming openWakeWord with custom TTS routing to Sonos
 voice_assistant:
