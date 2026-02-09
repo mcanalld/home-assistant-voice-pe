@@ -1771,11 +1771,7 @@ voice_assistant:
               id: play_sound
               priority: false
               sound_file: "wake_word_triggered_sound"
-    # Brief LED flash to acknowledge wake word
-    - light.turn_on:
-        id: voice_assistant_leds
-        brightness: 100%
-    - delay: 100ms
+    # Set phase and let control_leds handle LED animation
     - lambda: id(voice_assistant_phase) = ${voice_assist_waiting_for_command_phase_id};
     - script.execute: control_leds
   on_stt_vad_start:
@@ -1793,10 +1789,10 @@ voice_assistant:
           - lambda: id(voice_assistant_phase) = ${voice_assist_replying_phase_id};
           - script.execute: control_leds
           - script.execute: activate_stop_word_once
-  on_tts_start:    # CUSTOM on_tts_start - Mute PE internal speaker
-    - media_player.volume_set:
+  on_tts_start:    # CUSTOM on_tts_start - Stop PE internal speaker from playing
+    - media_player.stop:
         id: external_media_player
-        volume: 0.0
+        announcement: true
     - if:
         condition:
           # The intent_progress trigger didn't start the TTS Reponse
@@ -1814,15 +1810,6 @@ voice_assistant:
         data:
           url: !lambda 'return x;'
           device_name: ${friendly_name}
-    - delay: 10ms
-    - if:
-        condition:
-          media_player.is_announcing:
-            id: external_media_player
-        then:
-          media_player.stop:
-            id: external_media_player
-            announcement: true
   on_end:
     - wait_until:
         not:
