@@ -1720,11 +1720,12 @@ voice_assistant:
   noise_suppression_level: 0
   auto_gain: 31dBFS
   volume_multiplier: 1
+  conversation_timeout: 5s  # Time to wait for speech to start after wake word
   on_client_connected:
     - lambda: id(init_in_progress) = false;
-    # NO micro_wake_word.start - Wyoming handles wake word detection
     - lambda: id(voice_assistant_phase) = ${voice_assist_idle_phase_id};
     - script.execute: control_leds
+    - voice_assistant.start   # Start listening for wake word
   on_client_disconnected:
     - voice_assistant.stop:
     - lambda: id(voice_assistant_phase) = ${voice_assist_not_ready_phase_id};
@@ -1750,13 +1751,31 @@ voice_assistant:
               id: play_sound
               priority: true
               sound_file: "error_cloud_expired"
-  # When the voice assistant starts: Play a wake up sound, duck audio.
+  # When the voice assistant starts listening for wake word
   on_start:
+    # Duck audio for voice command
     - mixer_speaker.apply_ducking:
         id: media_mixing_input
-        decibel_reduction: 20  # Number of dB quieter; higher implies more quiet, 0 implies full volume
-        duration: 0.0s         # The duration of the transition (default is no transition)
-  on_listening:
+        decibel_reduction: 20
+        duration: 0.0s
+  on_listening:    # When wake word is detected by Wyoming
+    - homeassistant.action:
+        action: script.voice_assistant_wake_word_lower_volume
+        data:
+          device_name: ${friendly_name}  # Identifies which PE is calling
+    - if:    # Play wake word detection sound
+        condition:
+          switch.is_on: wake_sound
+        then:
+          - script.execute:
+              id: play_sound
+              priority: false
+              sound_file: "wake_word_triggered_sound"
+    # Brief LED flash to acknowledge wake word
+    - light.turn_on:
+        id: voice_assistant_leds
+        brightness: 100%
+    - delay: 100ms
     - lambda: id(voice_assistant_phase) = ${voice_assist_waiting_for_command_phase_id};
     - script.execute: control_leds
   on_stt_vad_start:
@@ -1774,8 +1793,7 @@ voice_assistant:
           - lambda: id(voice_assistant_phase) = ${voice_assist_replying_phase_id};
           - script.execute: control_leds
           - script.execute: activate_stop_word_once
-  # CUSTOM on_tts_start - Mute PE internal speaker
-  on_tts_start:
+  on_tts_start:    # CUSTOM on_tts_start - Mute PE internal speaker
     - media_player.volume_set:
         id: external_media_player
         volume: 0.0
@@ -1787,8 +1805,7 @@ voice_assistant:
           - lambda: id(voice_assistant_phase) = ${voice_assist_replying_phase_id};
           - script.execute: control_leds
           - script.execute: activate_stop_word_once
-  # CUSTOM on_tts_end - Route TTS to Sonos via Home Assistant script
-  on_tts_end:
+  on_tts_end:      # CUSTOM on_tts_end - Route TTS to Sonos via Home Assistant script
     - logger.log:
         format: "Announce on remote speakers"
         level: INFO
@@ -1814,20 +1831,17 @@ voice_assistant:
         id: media_mixing_input
         decibel_reduction: 0
         duration: 1.0s
-    # CUSTOM: Restore PE internal speaker volume
-    - media_player.volume_set:
+    - media_player.volume_set:   # CUSTOM: Restore PE internal speaker volume
         id: external_media_player
         volume: 0.5
-    # CUSTOM: Restore remote speaker volume via Home Assistant script
-    - logger.log:
+    - logger.log:   # CUSTOM: Restore remote speaker volume via Home Assistant script
         format: "Restore remote speaker volume"
         level: INFO
     - homeassistant.action:
         action: script.voice_assistant_wake_word_volume_restore
         data:
           device_name: ${friendly_name}
-    # If the end happened because of an error, let the error phase on for a second
-    - if:
+    - if:   # If the end happened because of an error, let the error phase on for a second
         condition:
           lambda: return id(voice_assistant_phase) == ${voice_assist_error_phase_id};
         then:
@@ -1835,6 +1849,8 @@ voice_assistant:
     # Reset the voice assistant phase id and reset the LED animations.
     - lambda: id(voice_assistant_phase) = ${voice_assist_idle_phase_id};
     - script.execute: control_leds
+    # Restart wake word detection for Wyoming
+    - voice_assistant.start
   on_timer_finished:
     - switch.turn_on: timer_ringing
   on_timer_started:
